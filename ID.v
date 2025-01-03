@@ -14,7 +14,7 @@ module ID(
     input wire [`WB_TO_RF_WD-1:0] wb_to_rf_bus,
 
     input wire [37:0] ex_to_id_bus, //  
-    input wire [37:0] mem_to_id_bus,            //
+    input wire [37:0] mem_to_id_bus,//
 
     output wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
@@ -62,10 +62,10 @@ module ID(
     } = if_to_id_bus_r;
 
     assign {
-        wb_rf_we,
-        wb_rf_waddr,
-        wb_rf_wdata
-    } = wb_to_rf_bus;
+        wb_rf_we,//1
+        wb_rf_waddr,//5
+        wb_rf_wdata//32
+    } = wb_to_rf_bus;//38
 
     // ****************************
     assign {
@@ -83,6 +83,7 @@ module ID(
 
     wire [5:0] opcode;
     wire [4:0] rs,rt,rd,sa;
+    //功能码
     wire [5:0] func;
     wire [15:0] imm;
     wire [25:0] instr_index;
@@ -108,7 +109,7 @@ module ID(
 
     wire [31:0] rdata1, rdata2;
 
-    wire [31:0] tdata1, tdata2; //
+    wire [31:0] tdata1, tdata2; //添加临时变量
 
 
     regfile u_regfile(
@@ -116,7 +117,7 @@ module ID(
         .raddr1 (rs ),
         .rdata1 (rdata1 ),
         .raddr2 (rt ),
-        .rdata2 (rdata2 ),
+        .rdata2 (rdata2 ),//rdata是输出信号，从顶层模块返回到ID模块
         .we     (wb_rf_we     ),
         .waddr  (wb_rf_waddr  ),
         .wdata  (wb_rf_wdata  )
@@ -144,7 +145,7 @@ module ID(
              (mem_rf_we & (mem_rf_waddr == rt)) ? mem_rf_wdata :
              (wb_rf_we & ( wb_rf_waddr == rt)) ? wb_rf_waddr:
              rdata2 == 32'b0 ? 32'b0 : rdata2;
-    
+    //************************************
 
 
     wire inst_ori, inst_lui, inst_addiu, inst_beq;
