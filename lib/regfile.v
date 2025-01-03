@@ -23,4 +23,5 @@ module regfile(
 
     // read out2
     assign rdata2 = (raddr2 == 5'b0) ? 32'b0 : reg_array[raddr2];
+    
 endmodule
