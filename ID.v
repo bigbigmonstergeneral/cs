@@ -14,16 +14,20 @@ module ID(
     input wire [`WB_TO_RF_WD-1:0] wb_to_rf_bus,
 
     // **********************************************
-    // TODO(1): 完成 EX、MEX 到ID连线，处理数据相关
+    // 完成 EX、MEX 到ID连线，处理数据相关
     input wire [`EX_TO_ID_WD-1:0] ex_to_id_bus,
     input wire [`MEM_TO_ID_WD-1:0] mem_to_id_bus,
     // **********************************************^
 
     // **********************************************
-    // TODO(2): 增加处理内存连线
-    output wire [`LOAD_SRAM_DATA_WD-1:0] load_sram_data,
-    output wire [`STORE_SRAM_DATA_WD-1:0] store_sram_data,
+    //  增加处理内存连线
+    output wire [`LOAD_SRAM_DATA_WD-1:0] load_sram_id_data,
+    output wire [`STORE_SRAM_DATA_WD-1:0] store_sram_id_data,
     // **********************************************^
+
+    // 处理load相关
+    input wire ex_find_load,
+    output wire stallreq_for_load,
 
     output wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
@@ -41,7 +45,7 @@ module ID(
     wire [4:0] wb_rf_waddr;
     wire [31:0] wb_rf_wdata;
 
-    // TODO (1): 处理数据相关 
+    //  处理数据相关 
     // **********************************************************
     wire ex_rf_we;
     wire [4:0] ex_rf_waddr;
@@ -65,24 +69,36 @@ module ID(
         mem_rf_wdata
     } = mem_to_id_bus;
 
-    // **********************************************************
+    // **********************************************************^
 
+    reg [31:0] slot;
+    reg is_slot;
+    
     always @ (posedge clk) begin
         if (rst) begin
-            if_to_id_bus_r <= `IF_TO_ID_WD'b0;        
+            if_to_id_bus_r <= `IF_TO_ID_WD'b0;  
+            is_slot <= 1'b0;    
+            slot <= 32'b0;  
         end
-        // else if (flush) begin
-        //     ic_to_id_bus <= `IC_TO_ID_WD'b0;
-        // end
         else if (stall[1]==`Stop && stall[2]==`NoStop) begin
             if_to_id_bus_r <= `IF_TO_ID_WD'b0;
+            is_slot <= 1'b0;
         end
         else if (stall[1]==`NoStop) begin
             if_to_id_bus_r <= if_to_id_bus;
+            is_slot <= 1'b0;
+            // slot <= 32'b0;
         end
+        else if ((stall[2:1] == 2'b11) && (is_slot == 1'b0)) begin
+            is_slot <= 1'b1;
+            slot <= inst_sram_rdata;
+        end
+        // else begin
+        //     if_to_id_bus_r <= `IF_TO_ID_WD'b0;
+        // end
     end
     
-    assign inst = inst_sram_rdata; // ?????
+    assign inst = ce ? is_slot ? slot : inst_sram_rdata : 32'b0; // 从内存中取出的指令
 
     assign {
         ce,
@@ -124,21 +140,27 @@ module ID(
     wire [31:0] rdata1, rdata2;
 
     // ******************************************************
-    // TODO(1): 完成EX到ID连线以及MEM到ID连线，处理数据相关
-    assign tdata1 = ((ex_rf_we && rs == ex_rf_waddr) ? ex_rf_wdata : 32'b0) | 
-                   ((mem_rf_we && rs == mem_rf_waddr) ? mem_rf_wdata : 32'b0) |
-                   ((wb_rf_we && rs == wb_rf_waddr) ? wb_rf_wdata : 32'b0) |
-                   (((ex_rf_we && rs == ex_rf_waddr) || (mem_rf_we && rs == mem_rf_waddr) || (wb_rf_we && rs == wb_rf_waddr)) ? 32'b0 : rdata1);
-    assign tdata2 = ((ex_rf_we && rt == ex_rf_waddr) ? ex_rf_wdata : 32'b0) | 
-                   ((mem_rf_we && rt == mem_rf_waddr) ? mem_rf_wdata : 32'b0) |
-                   ((wb_rf_we && rt == wb_rf_waddr) ? wb_rf_wdata : 32'b0) |
-                   (((ex_rf_we && rt == ex_rf_waddr) || (mem_rf_we && rt == mem_rf_waddr) || (wb_rf_we && rt == wb_rf_waddr)) ? 32'b0 : rdata2);
+    // 完成EX到ID连线以及MEM到ID连线，处理数据相关
+    assign tdata1 = (ex_rf_we && rs == ex_rf_waddr) ? ex_rf_wdata :
+                    (mem_rf_we && rs == mem_rf_waddr) ? mem_rf_wdata :
+                    (wb_rf_we && rs == wb_rf_waddr) ? wb_rf_wdata :
+                    (rdata1 == 32'b0) ? 32'b0 :
+                    rdata1;
 
+    assign tdata2 = (ex_rf_we && rt == ex_rf_waddr) ? ex_rf_wdata :
+                    (mem_rf_we && rt == mem_rf_waddr) ? mem_rf_wdata :
+                    (wb_rf_we && rt == wb_rf_waddr) ? wb_rf_wdata :
+                    (rdata2 == 32'b0) ? 32'b0 :
+                    rdata2;
+ 
     // 寄存器中没有值, data应为X态
     // assign rdata1 = tdata1;
     // assign rdata2 = tdata2;
     // 处理数据相关
     // ******************************************************^
+
+    // 处理load相关
+    assign stallreq_for_load = (ex_find_load && ex_rf_we) && (rs == ex_rf_waddr || rt == ex_rf_waddr) ? 1'b1 : 1'b0;   
 
     // 模块例化，将括号外的顶层信号通过连线连接到括号内的模块端口
 
@@ -153,17 +175,6 @@ module ID(
         .wdata  (wb_rf_wdata  )
     );
     
-
-    // ******************************************************
-    // 1` |opcode 6|rs    5|rt    5|rd    5|sa    5|func   6|
-    // 2` |opcode 6|rs    5|rt    5|offset                16|
-    // 3` |opcode 6|rs    5|rt    5|imm                   16|
-    // 4` |opcode 6|base  5|rt    5|rd    5|sa    5|func   6|
-    // 5` |opcode 6|base  5|rt    5|imm                   16|
-    // 6` |opcode 6|base  5|offset                        16|
-    // 7` |opcode 6|code                         20|func   6|
-    // 8` |opcode 6|instr_index                           26|
-    // ******************************************************
 
 
     assign opcode = inst[31:26];
@@ -181,7 +192,8 @@ module ID(
 
 
 
-    // TODO (0): 添加运算指令
+    //添加运算指令
+    //hi, lo 寄存器
     // 算数运算指令
     wire inst_add, inst_addi, inst_addiu, inst_addu, inst_sub, inst_subu;
     wire inst_slt, inst_slti, inst_sltiu, inst_sltu, inst_mul, inst_mult, inst_multu;
@@ -206,14 +218,14 @@ module ID(
         mthi:将rs的值写入HI寄存器
         mtlo:将rs的值写入LO寄存器
     */
-    // TODO (?) : 增加lo，hi寄存器
+    //增加lo，hi寄存器
     wire inst_mfhi, inst_mflo, inst_mthi, inst_mtlo;
 
     // 转移指令
         // 跳转指令
     wire inst_jr, inst_jalr, inst_j, inst_jal;
         // 分支指令
-    wire inst_b, inst_bal, inst_beq, inst_bgez, inst_bgezal;
+    wire inst_bal, inst_beq, inst_bgez, inst_bgezal;
     wire inst_bgtz, inst_blez, inst_bltz, inst_bltzal, inst_bne;
         // 跳转指令
     
@@ -249,7 +261,7 @@ module ID(
     );
 
     // ****************************************************************
-    // TODO(0): 添加运算指令
+    //添加运算指令
     // 算术运算指令
     assign inst_add     = op_d[6'b00_0000] & func_d[6'b10_0000];
     assign inst_addu    = op_d[6'b00_0000] & func_d[6'b10_0001];
@@ -322,16 +334,16 @@ module ID(
     // ******************************************************^
 
     // **********************************************************
-    // TODO (2): 内存数据传送
-    assign load_sram_data = {
+    //内存数据传送
+    assign load_sram_id_data = {
         inst_lb,
-        inst_lh,
-        inst_lw,
         inst_lbu,
-        inst_lhu
+        inst_lh,
+        inst_lhu,
+        inst_lw
     };
 
-    assign store_sram_data = {
+    assign store_sram_id_data = {
         inst_sb,
         inst_sh,
         inst_sw
@@ -340,7 +352,7 @@ module ID(
 
     // ***********************************************************
     // ALU 操作数来源
-    // TODO(?): 修改 ALU 
+    //修改 ALU 
     // rs to reg1   
     assign sel_alu_src1[0] = inst_ori   | inst_addiu | inst_and 
                             | inst_or   | inst_xor   | inst_nor
@@ -348,7 +360,7 @@ module ID(
                             | inst_srlv | inst_srav  | inst_add
                             | inst_addu | inst_sub   | inst_subu
                             | inst_slt   | inst_sltu | inst_addi
-                            | inst_addiu | inst_slti | inst_sltiu
+                            | inst_slti | inst_sltiu
                             | inst_mul  | inst_mult  | inst_multu
                             | inst_mthi | inst_mtlo  | inst_jr
                             | inst_jalr | inst_lb | inst_lbu
@@ -370,8 +382,8 @@ module ID(
                             | inst_sra | inst_sllv | inst_srlv
                             | inst_srav | inst_add | inst_addu 
                             | inst_sub   | inst_subu | inst_slt
-                            | inst_sltu | inst_addiu
-                            | inst_slti | inst_sltiu | inst_mul
+                            | inst_sltu 
+                            | inst_mul
                             | inst_mult | inst_multu
                             // | inst_nop
                             ;
@@ -391,7 +403,7 @@ module ID(
     // ***********************************************************^
 
 
-    // TODO(0): 添加运算指令
+    //添加运算指令
     assign op_add = inst_addiu | inst_add | inst_addu | inst_addi | inst_jal | inst_lw | inst_sw;
     assign op_sub = inst_sub | inst_subu;
     assign op_slt = inst_slt | inst_slti;
@@ -417,14 +429,7 @@ module ID(
                           | inst_sb | inst_sh | inst_sw;
 
     // write enable
-    // assign data_ram_wen = ( inst_sb ? 4'b0001 :      // sb: 写1个字节
-    //                         inst_sh ? 4'b0011 :  // sh: 写2个字节
-    //                         inst_sw ? 4'b1111 :  // sw: 写4个字节
-    //                         4'b0000);            // 默认不写
     assign data_ram_wen = inst_sw ? 4'b1111 : 4'b0000;
-    // assign data_ram_sel = inst_sb | inst_lb | inst_lbu ? byte_sel :
-    //                     inst_sh | inst_lh | inst_lhu ?  {{2{byte_sel[2]}},{2{byte_sel[0]}}} :
-    //                     inst_sw | inst_lw ? 4'b1111 : 4'b0000;
 
     // regfile store enable
     assign rf_we = inst_ori | inst_lui | inst_addiu
@@ -435,14 +440,14 @@ module ID(
                     | inst_and | inst_nor | inst_or
                     | inst_xor | inst_sll | inst_srl
                     | inst_sra | inst_sllv | inst_srlv
-                    | inst_srav /*| inst_nop*/ | inst_mfhi
+                    | inst_srav | inst_mfhi
                     | inst_mflo | inst_jalr | inst_jal
                     | inst_lb | inst_lbu | inst_lh
-                    | inst_lhu | inst_lw;
+                    | inst_lhu | inst_lw | inst_jr;
                     // & ~(inst_sb | inst_sh | inst_sw);
 
 
-    // TODO (?): 寄存器选择问题
+    //寄存器选择问题
     // store in [rd]
     assign sel_rf_dst[0] = inst_add | inst_addu | inst_sub
                         | inst_subu | inst_slt | inst_sltu
@@ -454,7 +459,7 @@ module ID(
     // store in [rt] 
     assign sel_rf_dst[1] = inst_ori | inst_lui | inst_addiu
                         | inst_andi | inst_slti | inst_sltiu
-                        | inst_andi | inst_xori | inst_lb
+                        | inst_xori | inst_lb
                         | inst_lbu | inst_lh | inst_lhu
                         | inst_lw | inst_addi;
     // store in [31]
@@ -468,13 +473,16 @@ module ID(
     // 0 from alu_res ; 1 from ld_res
     /*  
         sel_rf_res:
-                决定寄存器文件的写回数据来源
-            用途:
-                在写回阶段选择不同的数据来源：
-                0：写回 ALU 的计算结果。
-                1：写回从数据存储器加载的数据（如 LW 指令）
+            决定寄存器文件的写回数据来源
+        用途:
+            在写回阶段选择不同的数据来源：
+            0：写回 ALU 的计算结果。
+            1：写回从数据存储器加载的数据（如 LW 指令）
     */
-    assign sel_rf_res = inst_lw;
+    assign sel_rf_res = inst_lw | inst_lb | inst_lbu | inst_lh
+                        | inst_lhu | inst_sw | inst_sb | inst_sh
+                         ? 1'b1 : 1'b0;
+
                     //     (inst_lb | inst_lbu | inst_lh | inst_lhu | inst_lw | inst_jal) ? 1'b1 : 
                     //     1'b0; 
 
@@ -511,19 +519,19 @@ module ID(
 
     assign rs_eq_rt = (tdata1 == tdata2);
 
-    assign br_e = (inst_beq & rs_eq_rt) |
-              inst_jr |
-            //   inst_jalr |
-              inst_j |
-              inst_jal |
+    assign br_e = (inst_beq & rs_eq_rt) ||
+              inst_jr ||
+            //   inst_jalr ||
+              inst_jal ||
               (inst_bne & ~rs_eq_rt);
 
-    // assign br_e = (inst_beq & rs_eq_rt) ;
-    assign br_addr = inst_beq ? (pc_plus_4 + {{14{inst[15]}}, offset, 2'b0}) :
+    assign br_addr = inst_beq ? (pc_plus_4 + {{14{inst[15]}}, inst[15:0], 2'b0}) :
                  inst_jr  ? tdata1 :
                  inst_jal ? {pc_plus_4[31:28], instr_index, 2'b0} :
-                 inst_bne ? (pc_plus_4 + {{14{inst[15]}}, offset, 2'b0}) : 
-                 32'b0;
+                 inst_bne ? (pc_plus_4 + {{14{inst[15]}}, inst[15:0], 2'b0}) : 
+                //  inst_jalr ? tdata1 :
+                    32'b0;
+
 
 
     assign br_bus = {

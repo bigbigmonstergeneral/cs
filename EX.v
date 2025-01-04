@@ -8,10 +8,10 @@ module EX(
     input wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
     output wire [`EX_TO_MEM_WD-1:0] ex_to_mem_bus,
-    // TODO (1): 处理数据相关
+    //处理数据相关
     output wire [`EX_TO_ID_WD-1:0] ex_to_id_bus,        // 处理数据相关
 
-    // TODO (2): 内存相关, 将有关内存操作传到MEM，对具体的内存操作位数进行处理
+    //内存相关, 将有关内存操作传到MEM，对具体的内存操作位数进行处理
     input wire [`LOAD_SRAM_DATA_WD-1:0] load_sram_id_data,
     input wire [`STORE_SRAM_DATA_WD-1:0] store_sram_id_data,
     output wire [`LOAD_SRAM_DATA_WD-1:0] load_sram_ex_data,
@@ -19,7 +19,7 @@ module EX(
 
     output wire ex_find_load, // 用于load暂停请求
 
-    // TODO (3): 处理load相关
+    //处理load相关
     output wire [3:0] data_ram_sel, // 选择写入内存的字节
 
     output wire data_sram_en,
@@ -31,8 +31,7 @@ module EX(
     reg [`LOAD_SRAM_DATA_WD-1:0] load_sram_id_data_r;
     reg [`STORE_SRAM_DATA_WD-1:0] store_sram_id_data_r;    
 
-    // ? 为什么在上升沿的时候赋值，而不是定义成wire类型在顶层模块进行赋值
-    //  如果直接用 wire，信号在组合逻辑的传播过程中可能会产生毛刺（瞬态的高低电平波动），导致下一级电路误触发
+
     reg [`ID_TO_EX_WD-1:0] id_to_ex_bus_r;    
 
     always @ (posedge clk) begin
@@ -41,9 +40,6 @@ module EX(
             load_sram_id_data_r <= `LOAD_SRAM_DATA_WD'b0;
             store_sram_id_data_r <= `STORE_SRAM_DATA_WD'b0;
         end
-        // else if (flush) begin
-        //     id_to_ex_bus_r <= `ID_TO_EX_WD'b0;
-        // end
         else if (stall[2]==`Stop && stall[3]==`NoStop) begin
             id_to_ex_bus_r <= `ID_TO_EX_WD'b0;
             load_sram_id_data_r <= `LOAD_SRAM_DATA_WD'b0;
@@ -101,10 +97,6 @@ module EX(
                       sel_alu_src2[2] ? 32'd8 :
                       sel_alu_src2[3] ? imm_zero_extend : rf_rdata2;
     
-    // always @ (*) begin
-    //    $display("time : %0t, rdata1 = %h, rdata2 = %h", $time, rf_rdata1, rf_rdata2);
-    // end
-
 
     alu u_alu(
     	.alu_control (alu_op      ),
@@ -116,7 +108,7 @@ module EX(
     assign ex_result = alu_result;
 
     // ********************************************************************************************
-    // TODO (2): 更改sram信息
+    //更改sram信息
     wire [3:0] byte_sel;
     // wire [3:0] data_ram_sel; // 选择写入内存的字节
 
@@ -128,23 +120,6 @@ module EX(
     reg [`LOAD_SRAM_DATA_WD-1:0] load_sram_id_data_r;
     reg [`STORE_SRAM_DATA_WD-1:0] store_sram_id_data_r;    
 
-    // always @ (posedge clk) begin
-    //     if (rst) begin
-    //         load_sram_id_data_r <= `LOAD_SRAM_DATA_WD'b0;
-    //         store_sram_id_data_r <= `STORE_SRAM_DATA_WD'b0;
-    //     end
-    //     // else if (flush) begin
-    //     //     id_to_ex_bus_r <= `ID_TO_EX_WD'b0;
-    //     // end
-    //     else if (stall[2]==`Stop && stall[3]==`NoStop) begin
-    //         load_sram_id_data_r <= `LOAD_SRAM_DATA_WD'b0;
-    //         store_sram_id_data_r <= `STORE_SRAM_DATA_WD'b0;
-    //     end
-    //     else if (stall[2]==`NoStop) begin
-    //         load_sram_id_data_r <= load_sram_id_data;
-    //         store_sram_id_data_r <= store_sram_id_data;
-    //     end
-    // end
 
     wire inst_sb, inst_sh, inst_sw;
     wire inst_lb, inst_lh, inst_lw, inst_lbu, inst_lhu;
@@ -163,16 +138,13 @@ module EX(
         inst_lw
     } = load_sram_id_data_r;
 
-    // TODO (2): 进行暂停处理
-    // assign stall[2] = inst_lb | inst_lh | inst_lw | inst_lbu | inst_lhu ? `Stop : `NoStop;
-    // assign ex_find_load = (inst_lb | inst_lh | inst_lw | inst_lbu | inst_lhu) ? `Stop : `NoStop;
     assign ex_find_load = sel_rf_res;
 
     assign data_ram_sel = inst_sb | inst_lb | inst_lbu ? byte_sel :
                           inst_sh | inst_lh | inst_lhu ?  {{2{byte_sel[2]}},{2{byte_sel[0]}}} :
                           inst_sw | inst_lw ? 4'b1111 : 4'b0000;
     assign data_sram_en = data_ram_en;
-    // assign data_sram_wen = {{data_ram_wen}} & data_ram_sel;
+
     assign data_sram_wen = inst_sw ? 4'b1111:
                     inst_sb & alu_result[1:0]==2'b00 ? 4'b0001:
                     inst_sb & alu_result[1:0]==2'b01 ? 4'b0010:
@@ -202,7 +174,7 @@ module EX(
     // ********************************************************************************************^    
     
     // *****************************************************
-    // TODO (1): 连接至 ID
+    //连接至 ID
     // 写回寄存器
     // 将是否写回寄存器、写回寄存器地址、写回寄存器数据送到 ID 段
     assign ex_to_id_bus = {
@@ -215,9 +187,6 @@ module EX(
     // *****************************************************^
 
     assign data_ram_wen = data_sram_wen;
-    // always @ (posedge clk) begin
-    //     $display("data_sram_wen = %h", data_sram_wen);
-    // end
 
     assign ex_to_mem_bus = {
         ex_pc,          // 75:44
@@ -235,7 +204,7 @@ module EX(
     wire [63:0] mul_result;
     wire mul_signed; // 有符号乘法标记
 
-    // TODO (0): 增加乘法源操作数
+    //增加乘法源操作数
     wire [31:0] mul_opdata1, mul_opdata2;
 
 
