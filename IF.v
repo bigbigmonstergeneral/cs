@@ -19,6 +19,8 @@ module IF(
     input wire rst,
     input wire [`StallBus-1:0] stall,
 
+    // input wire flush,
+    // input wire [31:0] new_pc,
 
     /*
      用来处理分支指令和跳转指令，内容的值在ID段生成
@@ -66,6 +68,9 @@ module IF(
             ce_reg <= 1'b1;
         end
     end
+    // always @(posedge clk) begin
+    //     $display("time : %0t, brbus = %h, if_to_id_bus = %h", $time, br_bus, if_to_id_bus);
+    // end
 
     assign next_pc = br_e ? br_addr 
                    : pc_reg + 32'h4;

@@ -14,13 +14,13 @@ module ID(
     input wire [`WB_TO_RF_WD-1:0] wb_to_rf_bus,
 
     // **********************************************
-    // 完成 EX、MEX 到ID连线，处理数据相关
+    //完成 EX、MEX 到ID连线，处理数据相关
     input wire [`EX_TO_ID_WD-1:0] ex_to_id_bus,
     input wire [`MEM_TO_ID_WD-1:0] mem_to_id_bus,
     // **********************************************^
 
     // **********************************************
-    //  增加处理内存连线
+    //增加处理内存连线
     output wire [`LOAD_SRAM_DATA_WD-1:0] load_sram_id_data,
     output wire [`STORE_SRAM_DATA_WD-1:0] store_sram_id_data,
     // **********************************************^
@@ -45,7 +45,7 @@ module ID(
     wire [4:0] wb_rf_waddr;
     wire [31:0] wb_rf_wdata;
 
-    //  处理数据相关 
+    //处理数据相关 
     // **********************************************************
     wire ex_rf_we;
     wire [4:0] ex_rf_waddr;
@@ -98,7 +98,8 @@ module ID(
         // end
     end
     
-    assign inst = ce ? is_slot ? slot : inst_sram_rdata : 32'b0; // 从内存中取出的指令
+    // assign inst = ce ? is_slot ? slot : inst_sram_rdata : 32'b0; // 从内存中取出的指令
+    assign inst = is_slot ? slot : inst_sram_rdata; // 从内存中取出的指令
 
     assign {
         ce,
@@ -140,7 +141,7 @@ module ID(
     wire [31:0] rdata1, rdata2;
 
     // ******************************************************
-    // 完成EX到ID连线以及MEM到ID连线，处理数据相关
+    //完成EX到ID连线以及MEM到ID连线，处理数据相关
     assign tdata1 = (ex_rf_we && rs == ex_rf_waddr) ? ex_rf_wdata :
                     (mem_rf_we && rs == mem_rf_waddr) ? mem_rf_wdata :
                     (wb_rf_we && rs == wb_rf_waddr) ? wb_rf_wdata :
@@ -159,7 +160,7 @@ module ID(
     // 处理数据相关
     // ******************************************************^
 
-    // 处理load相关
+    //处理load相关
     assign stallreq_for_load = (ex_find_load && ex_rf_we) && (rs == ex_rf_waddr || rt == ex_rf_waddr) ? 1'b1 : 1'b0;   
 
     // 模块例化，将括号外的顶层信号通过连线连接到括号内的模块端口
@@ -175,6 +176,17 @@ module ID(
         .wdata  (wb_rf_wdata  )
     );
     
+
+    // ******************************************************
+    // 1` |opcode 6|rs    5|rt    5|rd    5|sa    5|func   6|
+    // 2` |opcode 6|rs    5|rt    5|offset                16|
+    // 3` |opcode 6|rs    5|rt    5|imm                   16|
+    // 4` |opcode 6|base  5|rt    5|rd    5|sa    5|func   6|
+    // 5` |opcode 6|base  5|rt    5|imm                   16|
+    // 6` |opcode 6|base  5|offset                        16|
+    // 7` |opcode 6|code                         20|func   6|
+    // 8` |opcode 6|instr_index                           26|
+    // ******************************************************
 
 
     assign opcode = inst[31:26];
@@ -307,7 +319,7 @@ module ID(
     // 跳转指令
     assign inst_jr      = op_d[6'b00_0000] & func_d[6'b00_1000];
     assign inst_jalr    = op_d[6'b00_0000] & func_d[6'b00_1001];
-    assign inst_j       = op_d[6'b00_0100];
+    assign inst_j       = op_d[6'b00_0010];
     assign inst_jal     = op_d[6'b00_0011];
 
     // 分支指令
@@ -429,6 +441,10 @@ module ID(
                           | inst_sb | inst_sh | inst_sw;
 
     // write enable
+    // assign data_ram_wen = ( inst_sb ? 4'b0001 :      // sb: 写1个字节
+    //                         inst_sh ? 4'b0011 :  // sh: 写2个字节
+    //                         inst_sw ? 4'b1111 :  // sw: 写4个字节
+    //                         4'b0000);            // 默认不写
     assign data_ram_wen = inst_sw ? 4'b1111 : 4'b0000;
 
     // regfile store enable
@@ -440,10 +456,11 @@ module ID(
                     | inst_and | inst_nor | inst_or
                     | inst_xor | inst_sll | inst_srl
                     | inst_sra | inst_sllv | inst_srlv
-                    | inst_srav | inst_mfhi
+                    | inst_srav | inst_mfhi | inst_andi
                     | inst_mflo | inst_jalr | inst_jal
                     | inst_lb | inst_lbu | inst_lh
-                    | inst_lhu | inst_lw | inst_jr;
+                    | inst_lhu | inst_lw | inst_jr
+                    | inst_xori;
                     // & ~(inst_sb | inst_sh | inst_sw);
 
 
@@ -521,18 +538,20 @@ module ID(
 
     assign br_e = (inst_beq & rs_eq_rt) ||
               inst_jr ||
-            //   inst_jalr ||
+              inst_j ||
               inst_jal ||
               (inst_bne & ~rs_eq_rt);
 
     assign br_addr = inst_beq ? (pc_plus_4 + {{14{inst[15]}}, inst[15:0], 2'b0}) :
                  inst_jr  ? tdata1 :
                  inst_jal ? {pc_plus_4[31:28], instr_index, 2'b0} :
+                 inst_j ?  ({ pc_plus_4[31:28], inst[25:0], 2'b0}) :
                  inst_bne ? (pc_plus_4 + {{14{inst[15]}}, inst[15:0], 2'b0}) : 
-                //  inst_jalr ? tdata1 :
                     32'b0;
 
-
+    // always @(posedge clk) begin
+    //     $display("tdata1: %h, tdata2: %h, rs_eq_rt: %h, PC: %h, bre: %h, br_addr: %h", tdata1, tdata2, rs_eq_rt, id_pc, br_e, br_addr);
+    // end
 
     assign br_bus = {
         br_e,

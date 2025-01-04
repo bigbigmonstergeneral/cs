@@ -7,7 +7,7 @@ module MEM(
 
     input wire [`EX_TO_MEM_WD-1:0] ex_to_mem_bus,
 
-    //完成MEM到ID连线，处理数据相关
+    // 完成MEM到ID连线，处理数据相关
     output wire [`MEM_TO_ID_WD-1:0] mem_to_id_bus,
 
     //内存相关
@@ -32,7 +32,9 @@ module MEM(
             load_sram_ex_data_r <= `LOAD_SRAM_DATA_WD'b0;
             store_sram_ex_data_r <= `STORE_SRAM_DATA_WD'b0;
         end
-
+        // else if (flush) begin
+        //     ex_to_mem_bus_r <= `EX_TO_MEM_WD'b0;
+        // end
         else if (stall[3]==`Stop && stall[4]==`NoStop) begin
             ex_to_mem_bus_r <= `EX_TO_MEM_WD'b0;
             load_sram_ex_data_r <= `LOAD_SRAM_DATA_WD'b0;
@@ -65,6 +67,8 @@ module MEM(
         ex_result       // 31:0
     } =  ex_to_mem_bus_r;
 
+
+
     wire inst_sb, inst_sh, inst_sw;
     wire inst_lb, inst_lh, inst_lw, inst_lbu, inst_lhu;
 
@@ -86,7 +90,6 @@ module MEM(
     wire [15:0] h_data;
     wire [31:0] w_data;
 
-
     assign b_data = data_ram_sel[3] ? data_sram_rdata[31:24] : 
                     data_ram_sel[2] ? data_sram_rdata[23:16] :
                     data_ram_sel[1] ? data_sram_rdata[15: 8] : 
@@ -100,7 +103,9 @@ module MEM(
                         inst_lh ? {{16{h_data[15]}},h_data} :
                         inst_lhu ? {{16{1'b0}},h_data} :
                         inst_lw ? w_data : 32'b0; 
+    // *******************************************************************^
 
+    // assign rf_wdata = sel_rf_res ? mem_result : ex_result;
     assign rf_wdata = sel_rf_res & data_ram_en ? mem_result : ex_result;
 
     assign mem_to_wb_bus = {
@@ -110,7 +115,7 @@ module MEM(
         rf_wdata    // 31:0
     };
 
-    //完成MEM到ID连线，处理数据相关
+    // 完成MEM到ID连线，处理数据相关
     assign mem_to_id_bus = {
         rf_we,     
         rf_waddr,   
