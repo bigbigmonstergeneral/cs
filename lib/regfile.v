@@ -10,7 +10,7 @@ module regfile(
     input wire [4:0] waddr,
     input wire [31:0] wdata
 );
-    reg [31:0] reg_array [31:0];
+    reg [31:0] reg_array [31:0]; // 32 个32位寄存器
     // write
     always @ (posedge clk) begin
         if (we && waddr!=5'b0) begin
@@ -23,5 +23,4 @@ module regfile(
 
     // read out2
     assign rdata2 = (raddr2 == 5'b0) ? 32'b0 : reg_array[raddr2];
-    
 endmodule
