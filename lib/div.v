@@ -23,7 +23,7 @@
 module div(
 	input wire rst,							//复位
 	input wire clk,							//时钟
-	input wire signed_div_i,						//是否为有符号除法运算，1位有符号
+	input wire signed_div_i,				//是否为有符号除法运算，1位有符号
 	input wire[31:0] opdata1_i,				//被除数
 	input wire[31:0] opdata2_i,				//除数
 	input wire start_i,						//是否开始除法运算
@@ -93,7 +93,7 @@ module div(
 							end else begin
 								dividend <= {div_temp[31:0],dividend[31:0], 1'b1};
 							end
-							cnt <= cnt +1;		//除法运算次数
+							cnt <= cnt + 1;		//除法运算次数
 						end	else begin
 							if ((signed_div_i == 1'b1) && ((opdata1_i[31] ^ opdata2_i[31]) == 1'b1)) begin
 								dividend[31:0] <= (~dividend[31:0] + 1);
